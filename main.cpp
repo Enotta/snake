@@ -8,29 +8,43 @@
 using namespace sf;
 using namespace std;
 
-class SnakeWorld {
-	static const int width = 10;
-	static const int height = 10;
+enum Direction {
+	up = 2,
+	down = 3,
+	left = 8,
+	right = 12,
+	none = 0
+};
 
+class SnakeWorld {
 private:
-	int field[height][width];
+	int** field;
 
 public:
-	static const int cellSize = 80;
+	int width;
+	int height;
+	int cellSize;
 
 	bool isDead = false;
-	vector<vector<int>> body;
+	vector<int*> body;
 
-	SnakeWorld() {
+	SnakeWorld(int Width = 10, int Height = 10, int CellSize = 80) {
+		width = Width;
+		height = Height;
+		cellSize = CellSize;
+
+		field = new int*[height];
+		for (int i = 0; i < height; ++i) field[i] = new int[width];
+
 		for (int i = 0; i < height; ++i) {
 			for (int j = 0; j < width; ++j) {
 				field[i][j] = 0;
 			}
 		}
 
-		body.push_back(vector<int>{height/2, width/2});
-		body.push_back(vector<int>{height/2, width/2+1});
-		body.push_back(vector<int>{height/2, width/2+2});
+		body.push_back(new int[2]{width / 2, height / 2});
+		body.push_back(new int[2]{width / 2, height / 2 + 1});
+		body.push_back(new int[2]{width / 2, height / 2 + 2});
 	}
 
 	bool hasFood() {
@@ -48,18 +62,18 @@ public:
 			int foodX = rand() / ((RAND_MAX + 1u) / width);
 			int foodY = rand() / ((RAND_MAX + 1u) / height);
 
-			if (field[foodX][foodY] == 0) {
-				field[foodX][foodY] = 2;
+			if (field[foodY][foodX] == 0) {
+				field[foodY][foodX] = 2;
 				break;
 			}
 		}
 	}
 
-	void update(Keyboard::Key dir = Keyboard::A) {
+	void update(Direction direction = Direction::none) {
 		int lastX = body.back()[0];
 		int lastY = body.back()[1];
 
-		for (vector<int>& cell : body) {
+		for (int* cell : body) {
 			field[cell[1]][cell[0]] = 0;
 		}
 
@@ -69,52 +83,57 @@ public:
 			field[body[i][1]][body[i][0]] = 1;
 		}
 
-		if (dir == Keyboard::A) { // place head based on dir
+		switch (direction) { // place head based on direction
+		case Direction::left:
 			if (body[0][0] - 1 > -1) {
 				body[0][0] -= 1;
 			}
 			else {
 				body[0][0] = width - 1;
 			}
-		}
-		else if (dir == Keyboard::W) {
+			break;
+
+		case Direction::up:
 			if (body[0][1] - 1 > -1) {
 				body[0][1] -= 1;
 			}
 			else {
 				body[0][1] = height - 1;
 			}
-		}
-		else if (dir == Keyboard::D) {
+			break;
+
+		case Direction::right:
 			if (body[0][0] + 1 < width) {
 				body[0][0] += 1;
 			}
 			else {
 				body[0][0] = 0;
 			}
-		}
-		else if (dir == Keyboard::S) {
+			break;
+
+		case Direction::down:
 			if (body[0][1] + 1 < height) {
 				body[0][1] += 1;
 			}
 			else {
 				body[0][1] = 0;
 			}
+			break;
 		}
 
 		if (field[body[0][1]][body[0][0]] == 2) { // add cell if food
-			body.push_back(vector<int>{lastX, lastY});
+			body.push_back(new int[2]{lastX, lastY});
 			field[lastY][lastX] = 1;
 		}
 
-		if (field[body[0][1]][body[0][0]] == 1 || (body[0][0] == lastX && body[0][1] == lastY)) { // check collision
+		if (field[body[0][1]][body[0][0]] == 1 && !(body[0][0] == lastX && body[0][1] == lastY)) { // check collision
 			isDead = true;
 		}
 
 		field[body[0][1]][body[0][0]] = 1;
 	}
 
-	void draw(RenderWindow& window, Keyboard::Key dir) {
+	void draw(RenderWindow& window, Direction direction) {
 		// draw head
 		CircleShape head = CircleShape();
 
@@ -129,18 +148,18 @@ public:
 		RectangleShape neck = RectangleShape();
 		neck.setFillColor(Color::Color(0, 80, 0, 255));
 		neck.setPosition(cellSize * body[0][0], body[0][1] * cellSize);
-		if (dir == Keyboard::A) {
+		if (direction == Direction::left) {
 			neck.setSize(Vector2f(cellSize/2, cellSize));
 			neck.setPosition(cellSize * body[0][0] + cellSize/2, body[0][1] * cellSize);
 		}
-		else if (dir == Keyboard::W) {
+		else if (direction == Direction::up) {
 			neck.setSize(Vector2f(cellSize, cellSize / 2));
 			neck.setPosition(cellSize * body[0][0], body[0][1] * cellSize + cellSize / 2);
 		}
-		else if (dir == Keyboard::D) {
+		else if (direction == Direction::right) {
 			neck.setSize(Vector2f(cellSize / 2, cellSize));
 		}
-		else if (dir == Keyboard::S) {
+		else if (direction == Direction::down) {
 			neck.setSize(Vector2f(cellSize, cellSize / 2));
 		}
 
@@ -182,7 +201,8 @@ int main() {
 	window.setFramerateLimit(6);
 
 	SnakeWorld snakeWorld;
-	Keyboard::Key movement = Keyboard::A; // default movement dir
+	Direction movement = Direction::left; // default movement dir
+	Direction newMovement = Direction::none; // default movement dir
 
 	RectangleShape grass = RectangleShape(Vector2f(800, 800));
 	grass.setFillColor(Color::Color(100, 230, 100, 200));
@@ -198,8 +218,37 @@ int main() {
 		while (window.pollEvent(event)) {
 			if (event.type == Event::Closed) window.close();
 			else if (event.type == Event::KeyPressed) { // save movement dir
-				movement = event.key.code;
+				switch (event.key.code) {
+				case Keyboard::A:
+				case Keyboard::Left:
+					if (!(movement & Direction::left))
+						newMovement = Direction::left;
+					break;
+
+				case Keyboard::D:
+				case Keyboard::Right:
+					if (!(movement & Direction::left))
+						newMovement = Direction::right;
+					break;
+
+				case Keyboard::W:
+				case Keyboard::Up:
+					if (!(movement & Direction::up))
+						newMovement = Direction::up;
+					break;
+
+				case Keyboard::S:
+				case Keyboard::Down:
+					if (!(movement & Direction::up))
+						newMovement = Direction::down;
+					break;
+				}
 			}
+		}
+
+		if (newMovement) {
+			movement = newMovement;
+			newMovement = Direction::none;
 		}
 
 		if (!snakeWorld.isDead) snakeWorld.update(movement); // freeze if dead
